@@ -4,76 +4,133 @@ from random import choice
 import twitter
 
 
-def open_and_read_file(filenames):
-    """Given a list of files, open them, read the text, and return one long
-        string."""
+from random import choice
+from sys import argv
 
-    body = ""
+N_GRAM = int(argv[1])
 
-    for filename in filenames:
-        text_file = open(filename)
-        body = body + text_file.read()
-        text_file.close()
 
-    return body
+def open_and_read_files(*paths):
+    """Takes file path as string; returns text as string.
+
+    Takes a string that is a file path, opens the file, and turns
+    the file's contents as one string of text.
+    """
+    text = ''
+    temp = ''
+    for path_list in paths:
+        for path in path_list:
+            temp = open(str(path), 'r')
+            text += temp.read()
+    return text
+    # with open(file_path, 'r') as f:
+    #     return f.read()
 
 
 def make_chains(text_string):
-    """Takes input text as string; returns dictionary of markov chains."""
+    """Takes input text as string; returns _dictionary_ of markov chains.
 
-    chains = {}
+    A chain will be a key that consists of a tuple of (word1, word2)
+    and the value would be a list of the word(s) that follow those two
+    words in the input text.
 
+    For example:
+
+        >>> make_chains("hi there mary hi there juanita")
+        {('hi', 'there'): ['mary', 'juanita'], ('there', 'mary'): ['hi'], ('mary', 'hi': ['there']}
+    """
+    chains = { }
+    # Split on white space to get words
     words = text_string.split()
 
-    for i in range(len(words) - 2):
-        key = (words[i], words[i + 1])
-        value = words[i + 2]
-
-        if key not in chains:
-            chains[key] = []
-
-        chains[key].append(value)
-
-        # or we could replace the last three lines with:
-        #    chains.setdefault(key, []).append(value)
+    for i in range(len(words) - N_GRAM):
+        # Create tuple to hold n words
+        words_ngram = tuple(words[i : i + N_GRAM ])
+        # Get the last element
+        element = words[i + N_GRAM]
+        # If the tuple key exists, append the element to the value list 
+        if words_ngram in chains:
+            chains[words_ngram].append(element)
+        # The tuple key doesn't exist, so create it and add the element in the value list
+        else:
+            chains[words_ngram] = [element]
 
     return chains
 
 
 def make_text(chains):
     """Takes dictionary of markov chains; returns random text."""
+    text = ''
+    return_text = ''
+    last_punctuation_index = 0
+    sentence_enders = [".","!","?"]
 
-    key = choice(chains.keys())
-    words = [key[0], key[1]]
-    while key in chains:
-        # Keep looping until we have a key that isn't in the chains
-        # (which would mean it was the end of our original text)
-        #
-        # Note that for long texts (like a full book), this might mean
-        # it would run for a very long time.
 
-        word = choice(chains[key])
-        words.append(word)
-        key = (key[1], word)
+    not_legit_caps = True
 
-    return " ".join(words)
+    while not_legit_caps:
+        # Get the beginning tuple
+        words_ngram = choice(chains.keys())
+        # Start with a capitalized word
+        if words_ngram[0][0].isupper():
+            not_legit_caps = False
+            text = " ".join(words_ngram)
+
+
+    # Tuple is a key in chains dict
+    while len(text) < 140:
+        # Get a random list from the given tuple
+        word_list = chains.get(words_ngram)
+
+        # Check for an empty list
+        if word_list is None:
+            break
+
+        word_n = choice(word_list)
+
+        # Add strings to text
+        text = text + " " + word_n
+
+        # Set the punctuation flag for slicing
+        if word_n[-1] in sentence_enders:
+            last_punctuation_index = len(text) - 1 
+
+        # Shift over the words to get the next key
+        words_ngram = words_ngram[1:] + (word_n,)
+
+    # Set and test our return text 
+    return_text = text[:last_punctuation_index + 1]
+
+    if return_text is '':
+        make_text(chains)
+    else:
+        return return_text
+
 
 
 def tweet(chains):
     # Use Python os.environ to get at environmental variables
     # Note: you must run `source secrets.sh` before running this file
     # to make sure these environmental variables are set.
-    pass
+    api = twitter.Api(
+        consumer_key = os.environ['TWITTER_CONSUMER_KEY'],
+        consumer_secret = os.environ['TWITTER_CONSUMER_SECRET'],
+        access_token_key = os.environ['TWITTER_ACCESS_TOKEN_KEY'],
+        access_token_secret = os.environ['TWITTER_ACCESS_TOKEN_SECRET']
+        )
+    print api.VerifyCredentials()
 
-# Get the filenames from the user through a command line prompt, ex:
-# python markov.py green-eggs.txt shakespeare.txt
-filenames = sys.argv[1:]
+    status = api.PostUpdate(make_text(chains))
 
 # Open the files and turn them into one long string
-text = open_and_read_file(filenames)
+input_text = open_and_read_files(argv[2:])
 
 # Get a Markov chain
-chains = make_chains(text)
+chains = make_chains(input_text)
 
-# Your task is to write a new function tweet, that will take chains as input
-# tweet(chains)
+
+# # Produce random text
+# random_text = make_text(chains)
+
+# Tweet that business!
+tweet(chains)
